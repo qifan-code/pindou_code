@@ -1,0 +1,889 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MARD 291 拼豆图纸生成器</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: Arial, "Microsoft YaHei", sans-serif; background:#f5f6f8; color:#222; }
+    .app { max-width: 1500px; margin: 0 auto; padding: 22px; }
+    h1 { margin: 0 0 6px; font-size: 30px; }
+    .subtitle { color:#666; margin-bottom: 20px; }
+    .layout { display:grid; grid-template-columns: 340px 1fr; gap:20px; }
+    .panel { background:#fff; border-radius:16px; padding:18px; box-shadow:0 4px 18px rgba(0,0,0,.06); }
+    .section { margin-bottom:24px; }
+    .section h3 { margin:0 0 12px; font-size:17px; }
+    input[type=file] { width:100%; }
+    #preview { width:100%; max-height:220px; object-fit:contain; display:none; margin-top:12px; border-radius:10px; border:1px solid #eee; }
+    .size-options { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+    .simplify-options { grid-template-columns:repeat(3,1fr); }
+    .size-btn, .tab-btn, .tool-btn {
+      border:1px solid #ccc; background:#fff; border-radius:10px; padding:10px; cursor:pointer;
+    }
+    .size-btn.active, .tab-btn.active { border-color:#1677ff; color:#1677ff; background:#eef5ff; font-weight:700; }
+    label { display:flex; align-items:center; gap:8px; margin:10px 0; }
+    .primary { width:100%; border:0; background:#111; color:#fff; padding:13px; border-radius:10px; cursor:pointer; font-size:16px; }
+    .secondary { width:100%; border:1px solid #ccc; background:#fff; padding:11px; border-radius:10px; cursor:pointer; margin-top:10px; }
+    .tabs { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+    .canvas-wrap { overflow:auto; border:1px solid #ddd; border-radius:12px; background:#fafafa; padding:16px; text-align:center; }
+    canvas { background:#fff; max-width:100%; height:auto; }
+    .summary { display:flex; gap:22px; flex-wrap:wrap; margin-bottom:14px; }
+    .color-list { display:grid; grid-template-columns:repeat(auto-fill,minmax(165px,1fr)); gap:9px; }
+    .color-row { display:flex; align-items:center; gap:10px; border:1px solid #eee; border-radius:8px; padding:8px; background:#fafafa; }
+    .swatch { width:30px; height:30px; border:1px solid #aaa; border-radius:5px; flex:0 0 auto; }
+    .small { color:#777; font-size:12px; }
+    .status { padding:10px 12px; border-radius:8px; background:#f3f6fa; font-size:13px; margin-top:10px; }
+    .range-row { display:grid; grid-template-columns:1fr auto; gap:10px; align-items:center; }
+    input[type=range] { width:100%; }
+    @media(max-width:900px){ .layout { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+<div class="app">
+  <h1>MARD 291 拼豆图纸生成器</h1>
+  <div class="subtitle">照片 → 颜色简化 → MARD 291 匹配 → 52 / 78 / 104 图纸 → 5×5 分组网格 → 用豆统计</div>
+
+  <div class="layout">
+    <div class="panel">
+      <div class="section">
+        <h3>1. 上传图片</h3>
+        <input id="fileInput" type="file" accept="image/*" />
+        <img id="preview" alt="preview" />
+      </div>
+
+      <div class="section">
+        <h3>2. 选择尺寸</h3>
+        <div class="size-options">
+          <button class="size-btn active" data-size="52">52×52</button>
+          <button class="size-btn" data-size="78">78×78</button>
+          <button class="size-btn" data-size="104">104×104</button>
+        </div>
+      </div>
+
+      <div class="section">
+        <h3>3. 图纸设置</h3>
+        <label><input id="showCodes" type="checkbox" checked />显示色号</label>
+        <label><input id="showCoords" type="checkbox" checked />显示坐标</label>
+        <label><input id="bold5" type="checkbox" checked />每 5 格加粗</label>
+      </div>
+
+      <div class="section">
+        <h3>4. 图片处理</h3>
+        <div class="range-row">
+          <input id="contrast" type="range" min="70" max="140" value="105" />
+          <span id="contrastValue">105%</span>
+        </div>
+        <div class="range-row">
+          <input id="saturation" type="range" min="70" max="140" value="110" />
+          <span id="saturationValue">110%</span>
+        </div>
+      </div>
+
+      <div class="section">
+        <h3>5. 颜色简化</h3>
+        <div class="size-options simplify-options">
+          <button class="tool-btn simplify-btn active" data-colors="auto">自动</button>
+          <button class="tool-btn simplify-btn" data-colors="12">12色</button>
+          <button class="tool-btn simplify-btn" data-colors="18">18色</button>
+          <button class="tool-btn simplify-btn" data-colors="24">24色</button>
+          <button class="tool-btn simplify-btn" data-colors="36">36色</button>
+          <button class="tool-btn simplify-btn" data-colors="0">不限</button>
+        </div>
+        <div class="small" id="simplifyHint" style="margin-top:8px">自动：52×52≈18色，78×78≈24色，104×104≈36色</div>
+      </div>
+
+      <button id="generateBtn" class="primary">生成拼豆图纸</button>
+      <button id="downloadBtn" class="secondary">下载图纸 + 材料清单 PNG</button>
+
+      <div id="paletteStatus" class="status">正在加载 MARD 291 色卡…</div>
+    </div>
+
+    <div>
+      <div class="panel">
+        <div class="tabs">
+          <button class="tab-btn active" data-mode="pattern">图纸模式</button>
+          <button class="tab-btn" data-mode="color">纯颜色</button>
+          <button class="tab-btn" data-mode="code">色号模式</button>
+        </div>
+        <div class="canvas-wrap">
+          <canvas id="patternCanvas"></canvas>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:20px">
+        <div class="summary">
+          <div>尺寸：<strong id="sumSize">52×52</strong></div>
+          <div>总颗数：<strong id="sumTotal">2704</strong></div>
+          <div>使用颜色：<strong id="sumColors">0</strong></div>
+        </div>
+        <div id="colorList" class="color-list"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const palette = [
+  {code:"A1",name:"A1",r:249,g:240,b:205},
+  {code:"A10",name:"A10",r:255,g:157,b:85},
+  {code:"A11",name:"A11",r:255,g:221,b:153},
+  {code:"A12",name:"A12",r:252,g:181,b:143},
+  {code:"A13",name:"A13",r:255,g:187,b:89},
+  {code:"A14",name:"A14",r:255,g:109,b:64},
+  {code:"A15",name:"A15",r:253,g:255,b:68},
+  {code:"A16",name:"A16",r:254,g:249,b:174},
+  {code:"A17",name:"A17",r:255,g:227,b:110},
+  {code:"A18",name:"A18",r:254,g:207,b:152},
+  {code:"A19",name:"A19",r:253,g:123,b:114},
+  {code:"A2",name:"A2",r:251,g:251,b:212},
+  {code:"A20",name:"A20",r:239,g:205,b:103},
+  {code:"A21",name:"A21",r:255,g:227,b:149},
+  {code:"A22",name:"A22",r:255,g:243,b:164},
+  {code:"A23",name:"A23",r:243,g:213,b:191},
+  {code:"A24",name:"A24",r:251,g:248,b:201},
+  {code:"A25",name:"A25",r:255,g:214,b:125},
+  {code:"A26",name:"A26",r:255,g:187,b:39},
+  {code:"A3",name:"A3",r:250,g:252,b:159},
+  {code:"A4",name:"A4",r:255,g:233,b:83},
+  {code:"A5",name:"A5",r:244,g:215,b:56},
+  {code:"A6",name:"A6",r:253,g:173,b:73},
+  {code:"A7",name:"A7",r:255,g:124,b:47},
+  {code:"A8",name:"A8",r:234,g:202,b:73},
+  {code:"A9",name:"A9",r:255,g:153,b:90},
+  {code:"B1",name:"B1",r:230,g:238,b:50},
+  {code:"B10",name:"B10",r:149,g:211,b:194},
+  {code:"B11",name:"B11",r:93,g:114,b:42},
+  {code:"B12",name:"B12",r:21,g:111,b:64},
+  {code:"B13",name:"B13",r:217,g:247,b:148},
+  {code:"B14",name:"B14",r:173,g:233,b:69},
+  {code:"B15",name:"B15",r:46,g:81,b:50},
+  {code:"B16",name:"B16",r:198,g:237,b:156},
+  {code:"B17",name:"B17",r:155,g:177,b:58},
+  {code:"B18",name:"B18",r:230,g:238,b:73},
+  {code:"B19",name:"B19",r:37,g:184,b:140},
+  {code:"B2",name:"B2",r:91,g:228,b:25},
+  {code:"B20",name:"B20",r:194,g:240,b:204},
+  {code:"B21",name:"B21",r:20,g:106,b:107},
+  {code:"B22",name:"B22",r:11,g:60,b:67},
+  {code:"B23",name:"B23",r:48,g:57,b:33},
+  {code:"B24",name:"B24",r:238,g:252,b:165},
+  {code:"B25",name:"B25",r:78,g:132,b:109},
+  {code:"B26",name:"B26",r:140,g:122,b:54},
+  {code:"B27",name:"B27",r:209,g:220,b:193},
+  {code:"B28",name:"B28",r:158,g:229,b:185},
+  {code:"B29",name:"B29",r:197,g:226,b:84},
+  {code:"B3",name:"B3",r:124,g:238,b:157},
+  {code:"B30",name:"B30",r:236,g:251,b:208},
+  {code:"B31",name:"B31",r:196,g:230,b:181},
+  {code:"B32",name:"B32",r:155,g:171,b:90},
+  {code:"B4",name:"B4",r:30,g:249,b:66},
+  {code:"B5",name:"B5",r:0,g:189,b:53},
+  {code:"B6",name:"B6",r:90,g:232,b:186},
+  {code:"B7",name:"B7",r:3,g:172,b:136},
+  {code:"B8",name:"B8",r:2,g:157,b:38},
+  {code:"B9",name:"B9",r:38,g:82,b:58},
+  {code:"C1",name:"C1",r:232,g:255,b:231},
+  {code:"C10",name:"C10",r:62,g:188,b:226},
+  {code:"C11",name:"C11",r:3,g:185,b:185},
+  {code:"C12",name:"C12",r:28,g:51,b:77},
+  {code:"C13",name:"C13",r:205,g:232,b:255},
+  {code:"C14",name:"C14",r:213,g:253,b:255},
+  {code:"C15",name:"C15",r:35,g:196,b:198},
+  {code:"C16",name:"C16",r:23,g:87,b:168},
+  {code:"C17",name:"C17",r:80,g:211,b:236},
+  {code:"C18",name:"C18",r:28,g:51,b:68},
+  {code:"C19",name:"C19",r:23,g:135,b:162},
+  {code:"C2",name:"C2",r:188,g:249,b:246},
+  {code:"C20",name:"C20",r:0,g:130,b:190},
+  {code:"C21",name:"C21",r:190,g:221,b:255},
+  {code:"C22",name:"C22",r:103,g:180,b:190},
+  {code:"C23",name:"C23",r:194,g:220,b:235},
+  {code:"C24",name:"C24",r:125,g:196,b:255},
+  {code:"C25",name:"C25",r:169,g:229,b:229},
+  {code:"C26",name:"C26",r:47,g:153,b:179},
+  {code:"C27",name:"C27",r:235,g:245,b:252},
+  {code:"C28",name:"C28",r:187,g:207,b:237},
+  {code:"C29",name:"C29",r:75,g:91,b:163},
+  {code:"C3",name:"C3",r:160,g:226,b:251},
+  {code:"C4",name:"C4",r:66,g:204,b:255},
+  {code:"C5",name:"C5",r:1,g:172,b:235},
+  {code:"C6",name:"C6",r:80,g:169,b:240},
+  {code:"C7",name:"C7",r:1,g:136,b:211},
+  {code:"C8",name:"C8",r:16,g:84,b:192},
+  {code:"C9",name:"C9",r:49,g:75,b:202},
+  {code:"D1",name:"D1",r:174,g:180,b:242},
+  {code:"D10",name:"D10",r:54,g:27,b:80},
+  {code:"D11",name:"D11",r:185,g:186,b:225},
+  {code:"D12",name:"D12",r:222,g:154,b:212},
+  {code:"D13",name:"D13",r:185,g:2,b:149},
+  {code:"D14",name:"D14",r:139,g:39,b:155},
+  {code:"D15",name:"D15",r:47,g:31,b:144},
+  {code:"D16",name:"D16",r:226,g:225,b:238},
+  {code:"D17",name:"D17",r:196,g:212,b:246},
+  {code:"D18",name:"D18",r:164,g:94,b:199},
+  {code:"D19",name:"D19",r:216,g:195,b:215},
+  {code:"D2",name:"D2",r:133,g:142,b:221},
+  {code:"D20",name:"D20",r:156,g:50,b:178},
+  {code:"D21",name:"D21",r:154,g:0,b:155},
+  {code:"D22",name:"D22",r:51,g:57,b:149},
+  {code:"D23",name:"D23",r:234,g:218,b:252},
+  {code:"D24",name:"D24",r:119,g:134,b:229},
+  {code:"D25",name:"D25",r:72,g:79,b:199},
+  {code:"D26",name:"D26",r:233,g:195,b:246},
+  {code:"D3",name:"D3",r:48,g:84,b:175},
+  {code:"D4",name:"D4",r:24,g:42,b:132},
+  {code:"D5",name:"D5",r:184,g:67,b:197},
+  {code:"D6",name:"D6",r:172,g:123,b:222},
+  {code:"D7",name:"D7",r:110,g:57,b:154},
+  {code:"D8",name:"D8",r:226,g:211,b:255},
+  {code:"D9",name:"D9",r:213,g:185,b:248},
+  {code:"E1",name:"E1",r:253,g:211,b:204},
+  {code:"E10",name:"E10",r:211,g:56,b:147},
+  {code:"E11",name:"E11",r:252,g:221,b:210},
+  {code:"E12",name:"E12",r:255,g:161,b:197},
+  {code:"E13",name:"E13",r:182,g:0,b:109},
+  {code:"E14",name:"E14",r:255,g:209,b:186},
+  {code:"E15",name:"E15",r:242,g:207,b:208},
+  {code:"E16",name:"E16",r:255,g:236,b:222},
+  {code:"E17",name:"E17",r:255,g:226,b:234},
+  {code:"E18",name:"E18",r:255,g:201,b:214},
+  {code:"E19",name:"E19",r:255,g:210,b:231},
+  {code:"E2",name:"E2",r:254,g:205,b:223},
+  {code:"E20",name:"E20",r:216,g:199,b:209},
+  {code:"E21",name:"E21",r:189,g:157,b:161},
+  {code:"E22",name:"E22",r:204,g:120,b:167},
+  {code:"E23",name:"E23",r:147,g:122,b:141},
+  {code:"E24",name:"E24",r:246,g:228,b:249},
+  {code:"E3",name:"E3",r:255,g:151,b:195},
+  {code:"E4",name:"E4",r:232,g:100,b:158},
+  {code:"E5",name:"E5",r:245,g:81,b:162},
+  {code:"E6",name:"E6",r:255,g:52,b:107},
+  {code:"E7",name:"E7",r:198,g:53,b:120},
+  {code:"E8",name:"E8",r:255,g:219,b:233},
+  {code:"E9",name:"E9",r:233,g:112,b:204},
+  {code:"F1",name:"F1",r:253,g:149,b:123},
+  {code:"F10",name:"F10",r:167,g:77,b:34},
+  {code:"F11",name:"F11",r:111,g:32,b:31},
+  {code:"F12",name:"F12",r:253,g:77,b:106},
+  {code:"F13",name:"F13",r:221,g:66,b:47},
+  {code:"F14",name:"F14",r:255,g:169,b:173},
+  {code:"F15",name:"F15",r:200,g:0,b:32},
+  {code:"F16",name:"F16",r:255,g:217,b:200},
+  {code:"F17",name:"F17",r:247,g:155,b:113},
+  {code:"F18",name:"F18",r:211,g:124,b:70},
+  {code:"F19",name:"F19",r:193,g:68,b:74},
+  {code:"F2",name:"F2",r:252,g:61,b:69},
+  {code:"F20",name:"F20",r:205,g:147,b:145},
+  {code:"F21",name:"F21",r:244,g:177,b:180},
+  {code:"F22",name:"F22",r:255,g:208,b:203},
+  {code:"F23",name:"F23",r:245,g:126,b:102},
+  {code:"F24",name:"F24",r:252,g:193,b:196},
+  {code:"F25",name:"F25",r:229,g:75,b:79},
+  {code:"F3",name:"F3",r:247,g:73,b:65},
+  {code:"F4",name:"F4",r:252,g:40,b:60},
+  {code:"F5",name:"F5",r:216,g:1,b:39},
+  {code:"F6",name:"F6",r:176,g:68,b:61},
+  {code:"F7",name:"F7",r:151,g:25,b:55},
+  {code:"F8",name:"F8",r:188,g:1,b:39},
+  {code:"F9",name:"F9",r:226,g:103,b:122},
+  {code:"G1",name:"G1",r:255,g:226,b:206},
+  {code:"G10",name:"G10",r:200,g:129,b:53},
+  {code:"G11",name:"G11",r:224,g:197,b:147},
+  {code:"G12",name:"G12",r:235,g:187,b:131},
+  {code:"G13",name:"G13",r:183,g:113,b:74},
+  {code:"G14",name:"G14",r:141,g:97,b:76},
+  {code:"G15",name:"G15",r:252,g:249,b:224},
+  {code:"G16",name:"G16",r:242,g:217,b:186},
+  {code:"G17",name:"G17",r:86,g:64,b:60},
+  {code:"G18",name:"G18",r:255,g:228,b:204},
+  {code:"G19",name:"G19",r:225,g:148,b:58},
+  {code:"G2",name:"G2",r:255,g:202,b:170},
+  {code:"G20",name:"G20",r:169,g:64,b:35},
+  {code:"G21",name:"G21",r:203,g:142,b:119},
+  {code:"G3",name:"G3",r:244,g:195,b:165},
+  {code:"G4",name:"G4",r:225,g:179,b:131},
+  {code:"G5",name:"G5",r:237,g:148,b:53},
+  {code:"G6",name:"G6",r:245,g:151,b:52},
+  {code:"G7",name:"G7",r:157,g:91,b:62},
+  {code:"G8",name:"G8",r:89,g:42,b:33},
+  {code:"G9",name:"G9",r:230,g:180,b:131},
+  {code:"H1",name:"H1",r:226,g:226,b:226},
+  {code:"H10",name:"H10",r:238,g:233,b:234},
+  {code:"H11",name:"H11",r:206,g:205,b:213},
+  {code:"H12",name:"H12",r:255,g:245,b:237},
+  {code:"H13",name:"H13",r:243,g:225,b:201},
+  {code:"H14",name:"H14",r:207,g:215,b:211},
+  {code:"H15",name:"H15",r:152,g:166,b:168},
+  {code:"H16",name:"H16",r:59,g:47,b:35},
+  {code:"H17",name:"H17",r:241,g:237,b:237},
+  {code:"H18",name:"H18",r:255,g:253,b:240},
+  {code:"H19",name:"H19",r:246,g:239,b:226},
+  {code:"H2",name:"H2",r:255,g:255,b:255},
+  {code:"H20",name:"H20",r:148,g:159,b:163},
+  {code:"H21",name:"H21",r:247,g:243,b:228},
+  {code:"H22",name:"H22",r:202,g:202,b:213},
+  {code:"H23",name:"H23",r:154,g:157,b:148},
+  {code:"H3",name:"H3",r:179,g:179,b:179},
+  {code:"H4",name:"H4",r:134,g:134,b:134},
+  {code:"H5",name:"H5",r:71,g:71,b:71},
+  {code:"H6",name:"H6",r:44,g:44,b:44},
+  {code:"H7",name:"H7",r:0,g:0,b:0},
+  {code:"H8",name:"H8",r:231,g:214,b:219},
+  {code:"H9",name:"H9",r:228,g:231,b:227},
+  {code:"M1",name:"M1",r:188,g:198,b:184},
+  {code:"M10",name:"M10",r:197,g:177,b:188},
+  {code:"M11",name:"M11",r:159,g:116,b:148},
+  {code:"M12",name:"M12",r:100,g:71,b:73},
+  {code:"M13",name:"M13",r:209,g:144,b:102},
+  {code:"M14",name:"M14",r:199,g:115,b:97},
+  {code:"M15",name:"M15",r:117,g:125,b:123},
+  {code:"M2",name:"M2",r:138,g:163,b:133},
+  {code:"M3",name:"M3",r:105,g:125,b:128},
+  {code:"M4",name:"M4",r:218,g:206,b:190},
+  {code:"M5",name:"M5",r:208,g:204,b:170},
+  {code:"M6",name:"M6",r:176,g:167,b:130},
+  {code:"M7",name:"M7",r:180,g:164,b:151},
+  {code:"M8",name:"M8",r:179,g:130,b:129},
+  {code:"M9",name:"M9",r:165,g:135,b:103},
+  {code:"P1",name:"P1",r:252,g:248,b:249},
+  {code:"P10",name:"P10",r:213,g:200,b:233},
+  {code:"P11",name:"P11",r:243,g:236,b:200},
+  {code:"P12",name:"P12",r:230,g:238,b:241},
+  {code:"P13",name:"P13",r:169,g:203,b:241},
+  {code:"P14",name:"P14",r:49,g:119,b:176},
+  {code:"P15",name:"P15",r:102,g:133,b:117},
+  {code:"P16",name:"P16",r:255,g:190,b:70},
+  {code:"P17",name:"P17",r:255,g:163,b:36},
+  {code:"P18",name:"P18",r:254,g:184,b:159},
+  {code:"P19",name:"P19",r:255,g:224,b:232},
+  {code:"P2",name:"P2",r:189,g:169,b:171},
+  {code:"P20",name:"P20",r:254,g:190,b:207},
+  {code:"P21",name:"P21",r:236,g:190,b:192},
+  {code:"P22",name:"P22",r:228,g:168,b:158},
+  {code:"P23",name:"P23",r:165,g:98,b:105},
+  {code:"P3",name:"P3",r:174,g:221,b:169},
+  {code:"P4",name:"P4",r:253,g:164,b:158},
+  {code:"P5",name:"P5",r:236,g:141,b:61},
+  {code:"P6",name:"P6",r:96,g:207,b:168},
+  {code:"P7",name:"P7",r:235,g:146,b:113},
+  {code:"P8",name:"P8",r:240,g:217,b:88},
+  {code:"P9",name:"P9",r:217,g:217,b:217},
+  {code:"Q1",name:"Q1",r:242,g:165,b:232},
+  {code:"Q2",name:"Q2",r:115,g:178,b:158},
+  {code:"Q3",name:"Q3",r:255,g:255,b:0},
+  {code:"Q4",name:"Q4",r:255,g:235,b:250},
+  {code:"Q5",name:"Q5",r:79,g:94,b:91},
+  {code:"R1",name:"R1",r:213,g:14,b:33},
+  {code:"R10",name:"R10",r:255,g:219,b:77},
+  {code:"R11",name:"R11",r:255,g:235,b:250},
+  {code:"R12",name:"R12",r:216,g:213,b:206},
+  {code:"R13",name:"R13",r:85,g:81,b:76},
+  {code:"R14",name:"R14",r:158,g:228,b:223},
+  {code:"R15",name:"R15",r:119,g:206,b:233},
+  {code:"R16",name:"R16",r:61,g:207,b:202},
+  {code:"R17",name:"R17",r:74,g:134,b:122},
+  {code:"R18",name:"R18",r:127,g:205,b:157},
+  {code:"R19",name:"R19",r:205,g:229,b:93},
+  {code:"R2",name:"R2",r:249,g:46,b:131},
+  {code:"R20",name:"R20",r:232,g:199,b:180},
+  {code:"R21",name:"R21",r:173,g:111,b:60},
+  {code:"R22",name:"R22",r:108,g:55,b:47},
+  {code:"R23",name:"R23",r:254,g:184,b:114},
+  {code:"R24",name:"R24",r:242,g:193,b:192},
+  {code:"R25",name:"R25",r:201,g:103,b:93},
+  {code:"R26",name:"R26",r:210,g:147,b:190},
+  {code:"R27",name:"R27",r:234,g:140,b:177},
+  {code:"R28",name:"R28",r:156,g:135,b:214},
+  {code:"R3",name:"R3",r:253,g:130,b:37},
+  {code:"R4",name:"R4",r:248,g:236,b:49},
+  {code:"R5",name:"R5",r:52,g:199,b:91},
+  {code:"R6",name:"R6",r:37,g:184,b:145},
+  {code:"R7",name:"R7",r:23,g:119,b:157},
+  {code:"R8",name:"R8",r:27,g:96,b:195},
+  {code:"R9",name:"R9",r:154,g:86,b:180},
+  {code:"T1",name:"T1",r:226,g:223,b:215},
+  {code:"Y1",name:"Y1",r:253,g:111,b:180},
+  {code:"Y2",name:"Y2",r:254,g:180,b:129},
+  {code:"Y3",name:"Y3",r:215,g:250,b:160},
+  {code:"Y4",name:"Y4",r:139,g:219,b:250},
+  {code:"Y5",name:"Y5",r:233,g:135,b:234},
+  {code:"ZG1",name:"ZG1",r:218,g:171,b:179},
+  {code:"ZG2",name:"ZG2",r:214,g:170,b:135},
+  {code:"ZG3",name:"ZG3",r:193,g:189,b:141},
+  {code:"ZG4",name:"ZG4",r:150,g:134,b:159},
+  {code:"ZG5",name:"ZG5",r:132,g:144,b:166},
+  {code:"ZG6",name:"ZG6",r:148,g:191,b:226},
+  {code:"ZG7",name:"ZG7",r:226,g:169,b:210},
+  {code:"ZG8",name:"ZG8",r:171,g:145,b:192}
+].map(c => ({
+  ...c,
+  hex: rgbToHex(c.r, c.g, c.b),
+  lab: rgbToLab(c.r, c.g, c.b)
+}));
+let img = null;
+let boardSize = 52;
+let mode = "pattern";
+let simplifyColors = "auto";
+let pattern = [];
+let counts = {};
+
+const fileInput = document.getElementById("fileInput");
+const preview = document.getElementById("preview");
+const canvas = document.getElementById("patternCanvas");
+const ctx = canvas.getContext("2d");
+const paletteStatus = document.getElementById("paletteStatus");
+
+
+function rgbToHex(r,g,b) {
+  return "#" + [r,g,b].map(v => Math.max(0,Math.min(255,Math.round(v))).toString(16).padStart(2,"0")).join("").toUpperCase();
+}
+
+function srgbToLinear(c) {
+  c /= 255;
+  return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055)/1.055, 2.4);
+}
+
+function rgbToLab(r,g,b) {
+  const R = srgbToLinear(r), G = srgbToLinear(g), B = srgbToLinear(b);
+  let X = R*0.4124564 + G*0.3575761 + B*0.1804375;
+  let Y = R*0.2126729 + G*0.7151522 + B*0.0721750;
+  let Z = R*0.0193339 + G*0.1191920 + B*0.9503041;
+  X /= 0.95047; Y /= 1.00000; Z /= 1.08883;
+  const f = t => t > 0.008856 ? Math.cbrt(t) : 7.787*t + 16/116;
+  const fx=f(X), fy=f(Y), fz=f(Z);
+  return { L:116*fy-16, a:500*(fx-fy), b:200*(fy-fz) };
+}
+
+function deltaE76(l1,l2) {
+  return Math.hypot(l1.L-l2.L, l1.a-l2.a, l1.b-l2.b);
+}
+
+function nearestBead(r,g,b) {
+  const lab = rgbToLab(r,g,b);
+  let best = palette[0], bestD = Infinity;
+  for (const bead of palette) {
+    const d = deltaE76(lab, bead.lab);
+    if (d < bestD) { bestD = d; best = bead; }
+  }
+  return best;
+}
+
+fileInput.addEventListener("change", e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const url = URL.createObjectURL(file);
+  preview.src = url;
+  preview.style.display = "block";
+  const temp = new Image();
+  temp.onload = () => img = temp;
+  temp.src = url;
+});
+
+document.querySelectorAll(".size-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".size-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    boardSize = Number(btn.dataset.size);
+  });
+});
+
+document.querySelectorAll(".simplify-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".simplify-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    simplifyColors = btn.dataset.colors;
+  });
+});
+
+function getTargetColorCount() {
+  if (simplifyColors === "0") return 0;
+  if (simplifyColors !== "auto") return Number(simplifyColors);
+  if (boardSize === 52) return 18;
+  if (boardSize === 78) return 24;
+  return 36;
+}
+
+document.querySelectorAll(".tab-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    mode = btn.dataset.mode;
+    if (pattern.length) redraw();
+  });
+});
+
+["showCodes","showCoords","bold5"].forEach(id => {
+  document.getElementById(id).addEventListener("change", () => pattern.length && redraw());
+});
+
+["contrast","saturation"].forEach(id => {
+  const el = document.getElementById(id);
+  const out = document.getElementById(id+"Value");
+  el.addEventListener("input", () => out.textContent = el.value + "%");
+});
+
+document.getElementById("generateBtn").addEventListener("click", generate);
+document.getElementById("downloadBtn").addEventListener("click", download);
+
+function getSquareCrop(image) {
+  const s = Math.min(image.width, image.height);
+  return { sx:(image.width-s)/2, sy:(image.height-s)/2, s };
+}
+
+
+function getPixelLabs(data) {
+  const labs = new Array(boardSize * boardSize);
+  const rgbs = new Array(boardSize * boardSize);
+  for (let i = 0, p = 0; i < data.length; i += 4, p++) {
+    const r = data[i], g = data[i+1], b = data[i+2];
+    rgbs[p] = {r,g,b};
+    labs[p] = rgbToLab(r,g,b);
+  }
+  return {labs, rgbs};
+}
+
+function seededIndices(length, k) {
+  const out = [];
+  if (k <= 0) return out;
+  for (let i = 0; i < k; i++) {
+    out.push(Math.min(length - 1, Math.floor((i + 0.5) * length / k)));
+  }
+  return out;
+}
+
+// K-means in Lab space. This reduces photographic noise before mapping to real MARD colors.
+function kMeansLab(labs, k, iterations = 10) {
+  if (!k || k >= labs.length) return null;
+
+  // Deterministic initialization from luminance-sorted samples.
+  const order = labs.map((lab, i) => ({lab, i})).sort((a,b) => a.lab.L - b.lab.L);
+  let centers = seededIndices(order.length, k).map(idx => ({...order[idx].lab}));
+  let assignments = new Int16Array(labs.length);
+
+  for (let iter = 0; iter < iterations; iter++) {
+    const sums = Array.from({length:k}, () => ({L:0,a:0,b:0,n:0}));
+
+    for (let i = 0; i < labs.length; i++) {
+      let best = 0, bestD = Infinity;
+      const lab = labs[i];
+      for (let c = 0; c < k; c++) {
+        const dL = lab.L - centers[c].L;
+        const da = lab.a - centers[c].a;
+        const db = lab.b - centers[c].b;
+        const d = dL*dL + da*da + db*db;
+        if (d < bestD) { bestD = d; best = c; }
+      }
+      assignments[i] = best;
+      const s = sums[best];
+      s.L += lab.L; s.a += lab.a; s.b += lab.b; s.n++;
+    }
+
+    let movement = 0;
+    for (let c = 0; c < k; c++) {
+      const s = sums[c];
+      if (!s.n) continue;
+      const next = {L:s.L/s.n, a:s.a/s.n, b:s.b/s.n};
+      movement += deltaE76(centers[c], next);
+      centers[c] = next;
+    }
+    if (movement < 0.1) break;
+  }
+
+  return {centers, assignments};
+}
+
+function nearestBeadToLab(lab) {
+  let best = palette[0], bestD = Infinity;
+  for (const bead of palette) {
+    const d = deltaE76(lab, bead.lab);
+    if (d < bestD) { bestD = d; best = bead; }
+  }
+  return best;
+}
+
+function simplifyToMard(labs, targetCount) {
+  // Unlimited: match every pixel directly to the 291-color palette.
+  if (!targetCount) {
+    return labs.map(lab => nearestBeadToLab(lab));
+  }
+
+  const km = kMeansLab(labs, targetCount, 12);
+  if (!km) return labs.map(lab => nearestBeadToLab(lab));
+
+  // Convert each cluster center to a real MARD color.
+  // Several centers may land on the same bead, so dedupe them.
+  const selectedMap = new Map();
+  for (const center of km.centers) {
+    const bead = nearestBeadToLab(center);
+    selectedMap.set(bead.code, bead);
+  }
+  const selected = [...selectedMap.values()];
+
+  // Reassign every original pixel to the closest bead among the selected MARD colors.
+  return labs.map(lab => {
+    let best = selected[0], bestD = Infinity;
+    for (const bead of selected) {
+      const d = deltaE76(lab, bead.lab);
+      if (d < bestD) { bestD = d; best = bead; }
+    }
+    return best;
+  });
+}
+
+function generate() {
+  if (!img) return alert("请先上传图片");
+  if (!palette.length) return alert("MARD 291 色卡还没有加载完成");
+
+  const off = document.createElement("canvas");
+  off.width = boardSize;
+  off.height = boardSize;
+  const octx = off.getContext("2d");
+
+  const crop = getSquareCrop(img);
+
+  octx.filter = `contrast(${document.getElementById("contrast").value}%) saturate(${document.getElementById("saturation").value}%)`;
+  octx.drawImage(img, crop.sx, crop.sy, crop.s, crop.s, 0,0,boardSize,boardSize);
+  octx.filter = "none";
+
+  const data = octx.getImageData(0,0,boardSize,boardSize).data;
+  const { labs } = getPixelLabs(data);
+  const targetCount = getTargetColorCount();
+  const mapped = simplifyToMard(labs, targetCount);
+
+  pattern = [];
+  counts = {};
+
+  for (let y=0; y<boardSize; y++) {
+    const row = [];
+    for (let x=0; x<boardSize; x++) {
+      const bead = mapped[y*boardSize+x];
+      row.push(bead);
+      counts[bead.code] = (counts[bead.code] || 0) + 1;
+    }
+    pattern.push(row);
+  }
+
+  redraw();
+  renderStats();
+
+  const actual = Object.keys(counts).length;
+  paletteStatus.textContent = targetCount
+    ? `MARD 291 已内置 · 简化目标 ${targetCount} 色 · 实际使用 ${actual} 色`
+    : `MARD 291 已内置 · 不限制颜色 · 实际使用 ${actual} 色`;
+}
+
+function redraw() {
+  const showCoords = document.getElementById("showCoords").checked;
+  const margin = showCoords ? 60 : 20;
+  const cell = boardSize === 52 ? 18 : boardSize === 78 ? 15 : 12;
+  const drawSize = boardSize * cell;
+
+  canvas.width = drawSize + margin + 20;
+  canvas.height = drawSize + margin + 20;
+
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  for (let y=0; y<boardSize; y++) {
+    for (let x=0; x<boardSize; x++) {
+      const bead = pattern[y][x];
+      const px = margin + x*cell;
+      const py = margin + y*cell;
+
+      ctx.fillStyle = mode === "code" ? "#fff" : bead.hex;
+      ctx.fillRect(px,py,cell,cell);
+
+      const shouldCode = mode === "code" || (mode === "pattern" && document.getElementById("showCodes").checked);
+      if (shouldCode) drawCode(bead, px, py, cell);
+    }
+  }
+
+  drawGrid(margin, margin, drawSize, cell);
+  if (showCoords) drawCoords(margin,margin,cell);
+}
+
+function drawCode(bead, px, py, cell) {
+  const rgb = {r:bead.r,g:bead.g,b:bead.b};
+  const brightness = (rgb.r*299 + rgb.g*587 + rgb.b*114)/1000;
+  ctx.font = `${Math.max(5, Math.floor(cell*0.34))}px Arial`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = mode === "code" ? "#111" : (brightness < 140 ? "#fff" : "#111");
+  ctx.fillText(bead.code, px+cell/2, py+cell/2);
+}
+
+function drawGrid(sx,sy,drawSize,cell) {
+  const bold5 = document.getElementById("bold5").checked;
+  for (let i=0;i<=boardSize;i++) {
+    let width = 0.5;
+    let color = "rgba(0,0,0,.28)";
+    if (bold5 && i % 5 === 0) { width = 2; color = "rgba(0,0,0,.95)"; }
+    if (i===0 || i===boardSize) { width = 2.5; color = "#000"; }
+
+    const x = sx + i*cell;
+    ctx.beginPath();
+    ctx.lineWidth = width;
+    ctx.strokeStyle = color;
+    ctx.moveTo(x,sy);
+    ctx.lineTo(x,sy+drawSize);
+    ctx.stroke();
+
+    const y = sy + i*cell;
+    ctx.beginPath();
+    ctx.lineWidth = width;
+    ctx.strokeStyle = color;
+    ctx.moveTo(sx,y);
+    ctx.lineTo(sx+drawSize,y);
+    ctx.stroke();
+  }
+}
+
+function drawCoords(sx,sy,cell) {
+  ctx.fillStyle = "#111";
+  ctx.font = "11px Arial";
+  ctx.textBaseline = "middle";
+
+  ctx.textAlign = "center";
+  for (let x=0;x<boardSize;x++) {
+    const n=x+1;
+    if (n===1 || n%5===0 || n===boardSize) {
+      ctx.fillText(n, sx+x*cell+cell/2, sy-15);
+    }
+  }
+
+  ctx.textAlign = "right";
+  for (let y=0;y<boardSize;y++) {
+    const n=y+1;
+    if (n===1 || n%5===0 || n===boardSize) {
+      ctx.fillText(n, sx-10, sy+y*cell+cell/2);
+    }
+  }
+}
+
+function renderStats() {
+  document.getElementById("sumSize").textContent = `${boardSize}×${boardSize}`;
+  document.getElementById("sumTotal").textContent = boardSize*boardSize;
+  document.getElementById("sumColors").textContent = Object.keys(counts).length;
+
+  const list = document.getElementById("colorList");
+  list.innerHTML = "";
+
+  Object.entries(counts)
+    .sort((a,b)=>b[1]-a[1])
+    .forEach(([code,count]) => {
+      const bead = palette.find(x => x.code === code);
+      const row = document.createElement("div");
+      row.className = "color-row";
+      row.innerHTML = `
+        <div class="swatch" style="background:${bead.hex}"></div>
+        <div>
+          <strong>${code}</strong>
+          <div class="small">${count} 颗 · ${bead.hex}</div>
+        </div>`;
+      list.appendChild(row);
+    });
+}
+
+function download() {
+  if (!pattern.length) return alert("请先生成图纸");
+
+  // 按用量从高到低整理材料表
+  const entries = Object.entries(counts)
+    .sort((a,b) => b[1] - a[1])
+    .map(([code, count]) => {
+      const bead = palette.find(x => x.code === code);
+      return { bead, count };
+    });
+
+  const exportWidth = Math.max(canvas.width, 1000);
+  const topPadding = 40;
+  const titleHeight = 60;
+  const gap = 34;
+
+  // 材料表：每行 4 个颜色
+  const cols = 4;
+  const itemW = Math.floor((exportWidth - 80) / cols);
+  const itemH = 54;
+  const rows = Math.ceil(entries.length / cols);
+  const legendTitleH = 52;
+  const legendHeight = legendTitleH + rows * itemH + 40;
+
+  // 图纸居中放置
+  const patternX = Math.floor((exportWidth - canvas.width) / 2);
+  const patternY = topPadding + titleHeight;
+
+  const exportHeight = patternY + canvas.height + gap + legendHeight;
+
+  const out = document.createElement("canvas");
+  out.width = exportWidth;
+  out.height = exportHeight;
+  const o = out.getContext("2d");
+
+  // 白底
+  o.fillStyle = "#ffffff";
+  o.fillRect(0, 0, exportWidth, exportHeight);
+
+  // 标题
+  o.fillStyle = "#111";
+  o.textAlign = "center";
+  o.textBaseline = "middle";
+  o.font = "bold 28px Arial, Microsoft YaHei, sans-serif";
+  o.fillText(`MARD 291 拼豆图纸 · ${boardSize}×${boardSize}`, exportWidth / 2, 38);
+
+  // 图纸
+  o.drawImage(canvas, patternX, patternY);
+
+  // 材料区
+  const legendY = patternY + canvas.height + gap;
+
+  o.fillStyle = "#111";
+  o.textAlign = "left";
+  o.font = "bold 22px Arial, Microsoft YaHei, sans-serif";
+  o.fillText("材料清单", 40, legendY + 22);
+
+  o.font = "14px Arial, Microsoft YaHei, sans-serif";
+  o.fillStyle = "#666";
+  o.fillText(
+    `共 ${boardSize * boardSize} 颗 · ${entries.length} 种颜色`,
+    150,
+    legendY + 22
+  );
+
+  const startY = legendY + legendTitleH;
+
+  entries.forEach((item, idx) => {
+    const col = idx % cols;
+    const row = Math.floor(idx / cols);
+    const x = 40 + col * itemW;
+    const y = startY + row * itemH;
+
+    // 色块
+    o.fillStyle = item.bead.hex;
+    o.fillRect(x, y + 8, 30, 30);
+    o.strokeStyle = "#888";
+    o.lineWidth = 1;
+    o.strokeRect(x + 0.5, y + 8.5, 29, 29);
+
+    // 色号
+    o.fillStyle = "#111";
+    o.font = "bold 15px Arial, Microsoft YaHei, sans-serif";
+    o.textAlign = "left";
+    o.fillText(item.bead.code, x + 42, y + 19);
+
+    // 数量
+    o.font = "14px Arial, Microsoft YaHei, sans-serif";
+    o.fillStyle = "#444";
+    o.fillText(`${item.count} 颗`, x + 42, y + 38);
+  });
+
+  const a = document.createElement("a");
+  a.download = `MARD291-${boardSize}x${boardSize}-pattern-and-materials.png`;
+  a.href = out.toDataURL("image/png");
+  a.click();
+}
+
+paletteStatus.textContent = `MARD 291 色卡已内置：${palette.length} 色（无需联网加载）`;
+</script>
+</body>
+</html>
